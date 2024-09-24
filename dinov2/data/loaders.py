@@ -1,8 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under the Apache License, Version 2.0
-# found in the LICENSE file in the root directory of this source tree.
-
 import logging
 from enum import Enum
 from typing import Any, Callable, List, Optional, TypeVar
@@ -10,7 +5,7 @@ from typing import Any, Callable, List, Optional, TypeVar
 import torch
 from torch.utils.data import Sampler
 
-from .datasets import ImageNet, ImageNet22k
+from .datasets import ImageNet, ImageNet22k, MineralDataset
 from .samplers import EpochSampler, InfiniteSampler, ShardedInfiniteSampler
 
 
@@ -43,7 +38,7 @@ def _make_sample_transform(image_transform: Optional[Callable] = None, target_tr
 
 def _parse_dataset_str(dataset_str: str):
     tokens = dataset_str.split(":")
-
+    
     name = tokens[0]
     kwargs = {}
 
@@ -51,13 +46,14 @@ def _parse_dataset_str(dataset_str: str):
         key, value = token.split("=")
         assert key in ("root", "extra", "split")
         kwargs[key] = value
-
     if name == "ImageNet":
         class_ = ImageNet
         if "split" in kwargs:
             kwargs["split"] = ImageNet.Split[kwargs["split"]]
     elif name == "ImageNet22k":
         class_ = ImageNet22k
+    elif name == "MineralDataset":
+        class_ = MineralDataset
     else:
         raise ValueError(f'Unsupported dataset "{name}"')
 
@@ -74,7 +70,7 @@ def make_dataset(
     Creates a dataset with the specified parameters.
 
     Args:
-        dataset_str: A dataset string description (e.g. ImageNet:split=TRAIN).
+        dataset_str: A dataset string description (e.g. MineralDataset:root=/data/minerals:split=train).
         transform: A transform to apply to images.
         target_transform: A transform to apply to targets.
 
@@ -82,9 +78,13 @@ def make_dataset(
         The created dataset.
     """
     logger.info(f'using dataset: "{dataset_str}"')
-
     class_, kwargs = _parse_dataset_str(dataset_str)
-    dataset = class_(transform=transform, target_transform=target_transform, **kwargs)
+
+    # Handle the root and split arguments for MineralDataset
+    if "root" not in kwargs or "split" not in kwargs:
+        raise ValueError('Dataset string must provide "root" and "split" for MineralDataset')
+
+    dataset = class_(root=kwargs["root"], split=kwargs["split"], transform=transform, target_transform=target_transform)
 
     logger.info(f"# of dataset samples: {len(dataset):,d}")
 
@@ -122,14 +122,12 @@ def _make_sampler(
         logger.info("sampler: sharded infinite")
         if size > 0:
             raise ValueError("sampler size > 0 is invalid")
-        # TODO: Remove support for old shuffling
-        use_new_shuffle_tensor_slice = type == SamplerType.SHARDED_INFINITE_NEW
         return ShardedInfiniteSampler(
             sample_count=sample_count,
             shuffle=shuffle,
             seed=seed,
             advance=advance,
-            use_new_shuffle_tensor_slice=use_new_shuffle_tensor_slice,
+            use_new_shuffle_tensor_slice=type == SamplerType.SHARDED_INFINITE_NEW,
         )
     elif type == SamplerType.EPOCH:
         logger.info("sampler: epoch")

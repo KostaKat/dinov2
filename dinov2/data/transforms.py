@@ -39,9 +39,8 @@ class MaybeToTensor(transforms.ToTensor):
 
 
 # Use timm's names
-IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
-
+IMAGENET_DEFAULT_MEAN = (0.3373, 0.3125, 0.3718)
+IMAGENET_DEFAULT_STD = (0.1334, 0.1314, 0.1472)
 
 def make_normalize_transform(
     mean: Sequence[float] = IMAGENET_DEFAULT_MEAN,
